@@ -3,34 +3,39 @@ import { User } from "../models/user.model";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { createAccessToken, createRefreshToken } from "../utils/tokens";
+import { setAccessTokenCookie, setRefreshTokenCookie, clearAuthCookies} from "../utils/cookies";
+import { AuthRequest } from "../middleware/auth.middleware";
 
-type registerBody = {
+// ===== TYPES =====
+type RegisterBody = {
   fname: string;
   lname: string;
   email: string;
   password: string;
 };
 
-type loginBody = {
+type LoginBody = {
   email: string;
   password: string;
 };
 
-type userBody = {
+type AuthToken = {
   id: string;
-  email: string;
   iat: number;
   exp: number;
 };
 
-// REGISTER
+// ===== REGISTER =====
 export const register = async (req: Request, res: Response) => {
-  const { fname, lname, email, password }: registerBody = req.body;
+  const { fname, lname, email, password }: RegisterBody = req.body;
+
+  if (!fname || !lname || !email || !password) {
+    return res.status(400).json({ message: "All fields required" });
+  }
 
   try {
-    const user = await User.findOne({ email });
-
-    if (user) {
+    const exists = await User.findOne({ email });
+    if (exists) {
       return res.status(400).json({ message: "Email already registered" });
     }
 
@@ -46,112 +51,91 @@ export const register = async (req: Request, res: Response) => {
     const accessToken = createAccessToken(newUser._id.toString());
     const refreshToken = createRefreshToken(newUser._id.toString());
 
-     res.cookie("AccessToken", accessToken, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      maxAge: 15 * 60 * 1000,
-    });
-
-    res.cookie("RefreshToken", refreshToken, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    setAccessTokenCookie(res, accessToken);
+    setRefreshTokenCookie(res, refreshToken);
 
     return res.status(201).json({ message: "Registration Success" });
-  } catch (error) {
-    return res.status(400).json({ message: "Registration Failed" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ message: "Registration Failed" });
   }
 };
 
-// LOGIN
+// ===== LOGIN =====
 export const login = async (req: Request, res: Response) => {
-  const { email, password }: loginBody = req.body;
+  const { email, password } :LoginBody = req.body;
+  
+  if (!email || !password) {
+    return res.status(400).json({ message: "All fields required" });
+  }
 
   try {
     const user = await User.findOne({ email });
 
     if (!user) {
-      return res.status(400).json({ message: "Email or Password is Incorrect" });
+      return res.status(400).json({ message: "Invalid credentials" });
+    }
+    if (!user.password) {
+      return res.status(400).json({ message: "Invalid credentials" });
     }
 
-    const match = await bcrypt.compare(password, user.password!);
+    const match = await bcrypt.compare(password, user.password);
 
     if (!match) {
-      return res.status(400).json({ message: "Email or Password is Incorrect" });
+      return res.status(400).json({ message: "Invalid credentials" });
     }
 
     const accessToken = createAccessToken(user._id.toString());
     const refreshToken = createRefreshToken(user._id.toString());
 
-    res.cookie("AccessToken", accessToken, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      maxAge: 15 * 60 * 1000,
-    });
-
-    res.cookie("RefreshToken", refreshToken, {
-      httpOnly: true,
-      secure: false,
-      sameSite: "lax",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    setAccessTokenCookie(res, accessToken);
+    setRefreshTokenCookie(res, refreshToken);
 
     return res.status(200).json({ message: "Login Success" });
-  } catch (error) {
-    return res.status(400).json({ message: "Login Failed" });
+  } catch(err) {
+    console.error(err);
+    return res.status(500).json({ message: "Login Failed" });
   }
 };
 
-// LOGOUT
+// ===== LOGOUT =====
 export const logout = async (req: Request, res: Response) => {
-  res.clearCookie("AccessToken");
-  res.clearCookie("RefreshToken");
-
+  clearAuthCookies(res);
   return res.status(200).json({ message: "Logout Success" });
 };
 
-// REFRESH TOKEN
+// ===== REFRESH TOKEN =====
 export const refresh = async (req: Request, res: Response) => {
-  const token = req.cookies.RefreshToken;
+  const token = req.cookies.RefreshToken; //raw encoded string, e1NiIsInR5cCI6IkpXVCJ9.eyJp
+
+  if (!token) {
+    return res.status(401).json({ message: "No RefreshToken" });
+  }
 
   try {
-    if (!token) {
-      return res.status(401).json({ message: "No RefreshToken" });
-    }
+    const decoded = jwt.verify(token,process.env.REFRESH_TOKEN_SECRET as string) as AuthToken;
 
-    const decoded = jwt.verify(
-      token,
-      process.env.REFRESH_TOKEN_SECRET!
-    ) as userBody;
-
-    const newAccessToken = createAccessToken(decoded.id);
-
-    res.cookie("AccessToken", newAccessToken, {
-      httpOnly: true,
-      sameSite: "none",
-      maxAge: 15 * 60 * 1000,
-    });
+    const newAccessToken = createAccessToken(decoded.id) ;
+    setAccessTokenCookie(res, newAccessToken);
 
     return res.status(200).json({ message: "Token Reassigned" });
-  } catch (error) {
+  } catch {
+    clearAuthCookies(res);
     return res.status(401).json({ message: "Refresh expired or invalid" });
   }
 };
 
-// ME (PROTECTED ROUTE)
-export const me = async (req: Request, res: Response) => {
-  const user = (req as any).user;
+export const me = async (req: AuthRequest, res: Response) => {
+  console.log("COOKIE RECEIVED:", req.cookies);
+  console.log("USER:", req.user);
 
-  if (!user) {
-    return res.status(401).json({ message: "Not authenticated" });
+  if (!req.user) {
+    return res.status(401).json({
+      message: "Not authenticated (no valid token)"
+    });
   }
 
   return res.status(200).json({
-    id: user.id,
-    email: user.email,
+    id: req.user.id,
   });
 };

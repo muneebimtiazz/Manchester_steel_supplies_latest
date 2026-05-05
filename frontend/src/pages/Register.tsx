@@ -35,14 +35,12 @@ const Register = () => {
 
     try {
       setLoading(true);
-
       await register({ fname, lname, email, password });
-
       enqueueSnackbar("Registration successful", {
         variant: "success",
       });
-
       navigate("/");
+      
     } catch (err: any) {
       enqueueSnackbar(
         err?.response?.data?.message || "Registration failed",

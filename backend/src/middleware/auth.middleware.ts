@@ -1,36 +1,35 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
-type userBody = {
+type AuthToken = {
   id: string;
-  email: string;
   iat: number;
   exp: number;
 };
 
-export const verifyAccessToken = async (
-  req: Request,
-  res: Response,
-  next: NextFunction
-) => {
-  const token = req.cookies.AccessToken;
+export interface AuthRequest extends Request {
+  user?: AuthToken;
+}
 
-  console.log("cookie", req.cookies)
+export const verifyAccessToken = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const token = req.cookies?.AccessToken;
+
+  console.log("ACCESS COOKIE:", token);
 
   if (!token) {
-    return res.status(401).json({ message: "No Token" });
+    return res.status(401).json({ message: "No Token Found" });
   }
 
   try {
     const decoded = jwt.verify(
       token,
       process.env.ACCESS_TOKEN_SECRET!
-    ) as userBody;
+    ) as AuthToken;
 
-    (req as any).user = decoded;
-
+    req.user = decoded;
     next();
-  } catch (error) {
-    return res.status(401).json({ message: "Invalid or expired token" });
+  } catch (err) {
+    console.log("JWT ERROR:", err);
+    return res.status(401).json({ message: "Invalid token" });
   }
 };

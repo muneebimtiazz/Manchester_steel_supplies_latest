@@ -34,12 +34,10 @@ const Login = () => {
 
   try {
     setLoading(true);
-
     await login({ email, password });
-
     enqueueSnackbar("Login successful", { variant: "success" });
-
     navigate("/");
+    
   } catch (err: any) {
     enqueueSnackbar(
       err?.response?.data?.message || "Login failed",
