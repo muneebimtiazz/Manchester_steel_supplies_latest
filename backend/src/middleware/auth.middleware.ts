@@ -14,7 +14,7 @@ export interface AuthRequest extends Request {
 export const verifyAccessToken = (req: AuthRequest, res: Response, next: NextFunction) => {
   const token = req.cookies?.AccessToken;
 
-  console.log("ACCESS COOKIE:", token);
+  // console.log("ACCESS COOKIE:", token);
 
   if (!token) {
     return res.status(401).json({ message: "No Token Found" });
