@@ -1,30 +1,43 @@
-import express from "express";
-import cors from "cors";
-import cookieParser from "cookie-parser";
-import dotenv from "dotenv";
-import authRoutes from "./routes/auth.routes";
-import { getCorsOptions } from "./config/cors.config";
+import express from "express"
+import cors from "cors"
+import cookieParser from "cookie-parser"
+import dotenv from "dotenv"
 
-dotenv.config();
+import authRoutes from "./routes/auth.routes"
+import steelRoutes from "./routes/steel.routes"
+import { getCorsOptions } from "./config/cors.config"
 
-const app = express();
+dotenv.config()
 
-// 1. CORS (USE YOUR CONFIG FILE)
-app.use(cors(getCorsOptions()));
+const app = express()
+
+// 1. CORS
+app.use(cors(getCorsOptions()))
 
 // 2. PARSERS
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(
+  express.json({
+    limit: "10mb",
+  })
+)
+
+app.use(
+  express.urlencoded({
+    extended: true,
+    limit: "10mb",
+  })
+)
 
 // 3. COOKIES
-app.use(cookieParser());
+app.use(cookieParser())
 
-// test
+// TEST ROUTE
 app.get("/", (req, res) => {
-  res.send("OK");
-});
+  res.send("OK")
+})
 
-// routes
-app.use("/api/auth", authRoutes);
+// ROUTES
+app.use("/api/auth", authRoutes)
+app.use("/api/steel", steelRoutes)
 
-export default app;
+export default app
