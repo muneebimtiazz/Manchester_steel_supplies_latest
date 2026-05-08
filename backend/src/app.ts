@@ -8,27 +8,11 @@ import steelRoutes from "./routes/steel.routes"
 import { getCorsOptions } from "./config/cors.config"
 
 dotenv.config()
-
 const app = express()
 
-// 1. CORS
 app.use(cors(getCorsOptions()))
-
-// 2. PARSERS
-app.use(
-  express.json({
-    limit: "10mb",
-  })
-)
-
-app.use(
-  express.urlencoded({
-    extended: true,
-    limit: "10mb",
-  })
-)
-
-// 3. COOKIES
+app.use(express.json({limit: "10mb",}))
+app.use(express.urlencoded({ extended: true, limit: "10mb",}))
 app.use(cookieParser())
 
 // TEST ROUTE
