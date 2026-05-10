@@ -1,1 +1,12 @@
+@import "./assets/fonts.css";
 @import "tailwindcss";
+
+@layer base {
+  html {
+    font-family: "Satoshi", sans-serif;
+  }
+
+  body {
+    font-family: "Satoshi", sans-serif;
+  }
+}
