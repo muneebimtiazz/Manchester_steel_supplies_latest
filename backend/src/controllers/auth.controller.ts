@@ -126,9 +126,6 @@ export const refresh = async (req: Request, res: Response) => {
 };
 
 export const me = async (req: AuthRequest, res: Response) => {
-  // console.log("COOKIE RECEIVED:", req.cookies);
-  // console.log("USER:", req.user);
-
   if (!req.user) {
     return res.status(401).json({
       message: "Not authenticated (no valid token)"

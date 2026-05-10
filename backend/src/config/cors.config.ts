@@ -2,14 +2,14 @@ import { CorsOptions } from "cors";
 
 export const getCorsOptions = (): CorsOptions => {
   const allowedOrigins = [
-    "http://localhost:5173"
+    "http://localhost:5173",
+    "http://localhost:5174"
   ];
 
   return {
     origin: (origin, callback) => {
       // allow mobile apps, postman, server-to-server
       if (!origin) return callback(null, true);
-
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
       }
@@ -18,9 +18,7 @@ export const getCorsOptions = (): CorsOptions => {
     },
 
     credentials: true,
-
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-
     allowedHeaders: ["Content-Type", "Authorization"]
   };
 };
