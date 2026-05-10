@@ -3,8 +3,8 @@ import axios from "axios";
 import FormData from "form-data";
 
 // ===== CONTROLLER =====
-export const upload = async (req: Request, res: Response) => {
-  console.log("route HIT")
+export const uploadController = async (req: Request, res: Response) => {
+  console.log("upload route HIT")
   try {
     // file from multer
     const file = req.file;
@@ -48,5 +48,64 @@ export const upload = async (req: Request, res: Response) => {
       message: "Upload failed",
       error: error?.response?.data || error.message,
     });
+  }
+};
+
+
+export const streamController = async (req: Request, res: Response) => {
+  console.log("stream route HIT")
+  const { jobId } = req.params;
+
+  try {
+    // ===== 1. Set SSE headers =====
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders();
+
+    // ===== 2. Connect to FastAPI SSE =====
+    const response = await axios.get(
+      `https://man-steel-api-1.onrender.com/stream/${jobId}`,
+      {
+        responseType: "stream",
+      }
+    );
+
+    // ===== 3. Pipe stream chunks =====
+    response.data.on("data", (chunk: Buffer) => {
+      const data = chunk.toString();
+
+      // Forward exactly as received
+      res.write(data);
+    });
+
+    // ===== 4. End stream =====
+    response.data.on("end", () => {
+      res.end();
+    });
+
+    // ===== 5. Error handling =====
+    response.data.on("error", (err: any) => {
+      console.error("Stream error:", err);
+      res.end();
+    });
+
+    // ===== 6. Handle client disconnect =====
+    req.on("close", () => {
+      response.data.destroy();
+      res.end();
+    });
+
+  } catch (error: any) {
+    console.error("Controller error:", error?.message);
+
+    res.write(
+      `data: ${JSON.stringify({
+        type: "error",
+        message: "Stream failed",
+      })}\n\n`
+    );
+
+    res.end();
   }
 };
