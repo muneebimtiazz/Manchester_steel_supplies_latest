@@ -17,8 +17,8 @@ import precisionManufacturing from "../assets/precision_manufacturing.png"
 import sportsScore from "../assets/sports_score.png"
 import weight from "../assets/weight.png"
 import inkSelection from "../assets/ink_selection.png"
-import excelLogo from "../assets/4726010.png"
-import pdfLogo from "../assets/19edf111f3ce7f883923c2bafb27e96aa7de1880.png"
+import excelLogo from "../assets/xls.png"
+import pdfLogo from "../assets/pdf.png"
 import nearMe from "../assets/near_me.png"
 import backHand from "../assets/back_hand.png"
 import three60 from "../assets/360.png"
@@ -83,7 +83,7 @@ const handleStartScan = async () => {
               <div className="space-x-3">
                 <button
                   onClick={decr}
-                  className="bg-[#F4F4F5] rounded-sm px-2 py-1"
+                  className="bg-[#F4F4F5] rounded-sm px-2 py-2"
                 >
                   <Minus size={12} />
                 </button>
@@ -92,7 +92,7 @@ const handleStartScan = async () => {
 
                 <button
                   onClick={incr}
-                  className="bg-[#F4F4F5] rounded-sm px-2 py-1"
+                  className="bg-[#F4F4F5] rounded-sm px-2 py-2"
                 >
                   <Plus size={12} />
                 </button>
@@ -123,7 +123,7 @@ const handleStartScan = async () => {
 
               <button
                 onClick={handleStartScan}
-                className="text-white flex justify-center items-center gap-1 w-full sm:w-auto pl-5 pr-6 py-3 bg-[#438DE7] hover:bg-[#2784f7] rounded-xl"
+                className="text-white flex justify-center items-center gap-1 w-full sm:w-auto pl-5 pr-6 py-3 bg-[#438DE7] hover:bg-[#2784f7] rounded-md"
               >
                 <img src={play} />
                 Start AI Scan
@@ -139,15 +139,15 @@ const handleStartScan = async () => {
               </p>
 
               <div className="flex gap-1">
-                <button className="flex items-center gap-2 border-2 px-3 py-1 border-gray-200 rounded-xl">
+                <button className="flex items-center gap-2 border-2 px-3 py-1 border-gray-200 rounded-md">
                   <SlidersHorizontal size={18} /> Filter
                 </button>
 
-                <button className="flex items-center gap-2 border-2 px-3 py-1 border-gray-200 rounded-xl">
+                <button className="flex items-center gap-2 border-2 px-3 py-1 border-gray-200 rounded-md">
                   <ArrowDownNarrowWide size={18} /> Sort
                 </button>
 
-                <button className="flex items-center gap-2 border-2 px-3 py-1 border-gray-200 rounded-xl">
+                <button className="flex items-center gap-2 border-2 px-3 py-1 border-gray-200 rounded-md">
                   <Ellipsis size={18} />
                 </button>
               </div>
@@ -168,9 +168,9 @@ const handleStartScan = async () => {
                         {item.formula}
                     </span>
 
-                    <span className='block sm:inline text-gray-800 underline cursor-pointer'>
+                    {/* <span className='block sm:inline text-gray-800 underline cursor-pointer'>
                         View Activity
-                    </span>
+                    </span> */}
 
                 </div>
             ))}
@@ -186,7 +186,7 @@ const handleStartScan = async () => {
             </p>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:gap-2 w-full">
-              <div className="flex-1 bg-[#E2D2FF] rounded-2xl p-2 flex flex-col">
+              <div className="flex-1 bg-[#E2D2FF] rounded-xl p-2 flex flex-col">
                 <div className="w-1/4 flex justify-center ml-auto p-2 rounded-md bg-[#CFBFEB]">
                   <img src={weight} />
                 </div>
@@ -194,7 +194,7 @@ const handleStartScan = async () => {
                 <p className="text-xl text-gray-800">24.63 T</p>
               </div>
 
-              <div className="flex-1 bg-[#FCE1AC] rounded-2xl p-2 flex flex-col">
+              <div className="flex-1 bg-[#FCE1AC] rounded-xl p-2 flex flex-col">
                 <div className="w-1/4 flex justify-center ml-auto p-2 rounded-md bg-[#F2D395]">
                   <img src={inkSelection} />
                 </div>
@@ -202,7 +202,7 @@ const handleStartScan = async () => {
                 <p className="text-xl text-gray-800">1,248 m²</p>
               </div>
 
-              <div className="flex-1 bg-[#BAE5F5] rounded-2xl p-2 flex flex-col">
+              <div className="flex-1 bg-[#BAE5F5] rounded-xl p-2 flex flex-col">
                 <div className="w-1/4 flex justify-center ml-auto p-2 rounded-md bg-[#A6D6E8]">
                   <img src={precisionManufacturing} />
                 </div>
@@ -210,7 +210,7 @@ const handleStartScan = async () => {
                 <p className="text-xl text-gray-800">312 hrs</p>
               </div>
 
-              <div className="flex-1 bg-[#CBEFBF] rounded-2xl p-2 flex flex-col">
+              <div className="flex-1 bg-[#CBEFBF] rounded-xl p-2 flex flex-col">
                 <div className="w-1/4 flex justify-center ml-auto p-2 rounded-md bg-[#B5DCA8]">
                   <img src={sportsScore} />
                 </div>
@@ -252,16 +252,18 @@ const handleStartScan = async () => {
               </table>
             </div>
 
-            <div className="text-right space-x-2">
-              <button className="px-3 py-2 rounded-lg border border-gray-300 bg-gray-100 text-sm">
-                <img src={excelLogo} className="inline w-5 h-5 mr-2" />
+            <div className="flex justify-end space-x-2">
+              
+              <button className="px-3 py-2 rounded-md border border-gray-300 bg-gray-100 text-sm inline-flex items-center">
+                <img src={excelLogo} className="w-4 h-4 mr-2" />
                 Export Excel File
               </button>
 
-              <button className="px-3 py-2 rounded-lg border border-[#E5252A29] bg-[#E5252A29] text-sm">
-                <img src={pdfLogo} className="inline w-5 h-5 mr-2" />
+              <button className="px-3 py-2 rounded-md border border-[#E5252A29] bg-[#E5252A29] text-sm inline-flex items-center">
+                <img src={pdfLogo} className="w-4 h-4 mr-2" />
                 Export Marked PDF
               </button>
+
             </div>
           </div>
         </div>
