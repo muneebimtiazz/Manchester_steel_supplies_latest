@@ -3,6 +3,7 @@ import logo from "../assets/Group_20.png";
 import { LogOut } from "lucide-react";
 import { logout } from "../api/auth";
 import { useState } from "react";
+import { enqueueSnackbar } from "notistack";
 
 const NavBar = () => {
   const navigate = useNavigate();
@@ -10,12 +11,17 @@ const NavBar = () => {
 
   const handleLogout = async () => {
     if (loading) return;
+
     try {
       setLoading(true);
       await logout();
+      enqueueSnackbar("Logged out successfully", { variant: "success" });
       navigate("/login");
-    } catch (err) {
-      console.log(err);
+    } catch (err: any) {
+      enqueueSnackbar(
+        err?.response?.data?.message || "Logout failed",
+        { variant: "error" }
+      );
     } finally {
       setLoading(false);
     }

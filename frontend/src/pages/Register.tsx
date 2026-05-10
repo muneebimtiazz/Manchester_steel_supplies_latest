@@ -15,20 +15,6 @@ const Register = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // const handleSubmit = async (e:any) => {
-  //   e.preventDefault();
-  //   if (loading) return;
-
-  //   try {
-  //     setLoading(true);
-  //     await register({ fname, lname, email, password });
-  //     navigate("/");
-  //   } catch (err) {
-  //     console.log(err);
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
   const handleSubmit = async (e: any) => {
     e.preventDefault();
     if (loading) return;

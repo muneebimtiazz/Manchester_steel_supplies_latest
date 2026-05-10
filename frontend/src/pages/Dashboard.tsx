@@ -29,7 +29,7 @@ import three from "../assets/366.png"
 import play from "../assets/play_arrow.png"
 
 import { table } from "../assets/dataset"
-import { uploadDrawing, streamJob } from "../api/steel.api"
+import {streamJob } from "../api/steel.api"
 
 const Dashboard = () => {
   const [zoom, setZoom] = useState(62)
