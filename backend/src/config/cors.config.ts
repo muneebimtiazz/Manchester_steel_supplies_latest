@@ -3,7 +3,7 @@ import { CorsOptions } from "cors";
 export const getCorsOptions = (): CorsOptions => {
   const allowedOrigins = [
     "http://localhost:5173",
-    "http://localhost:5174"
+    "https://manchester-steel-web.vercel.app"
   ];
 
   return {
