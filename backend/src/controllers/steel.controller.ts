@@ -2,48 +2,34 @@ import { Request, Response } from "express";
 import axios from "axios";
 import FormData from "form-data";
 
-// ===== CONTROLLER =====
+const FASTAPI_BASE = process.env.FASTAPI_URL || "https://man-steel-api-1.onrender.com";
+
+// ── Upload ─────────────────────────────────────────────────────────────────
 export const uploadController = async (req: Request, res: Response) => {
-  console.log("upload route HIT")
+  console.log("upload route HIT");
   try {
-    // file from multer
     const file = req.file;
+    if (!file) return res.status(400).json({ message: "PDF file is required" });
 
-    if (!file) {
-      return res.status(400).json({ message: "PDF file is required" });
-    }
-
-    // fields from frontend
     const { paper_size, scale_ratio, pipeline_type, dpi } = req.body;
 
-    // ===== create FormData for FastAPI =====
     const formData = new FormData();
-
     formData.append("file", file.buffer, {
       filename: file.originalname,
       contentType: file.mimetype,
     });
-
     formData.append("paper_size", paper_size || "A3");
     formData.append("scale_ratio", scale_ratio || "50");
     formData.append("pipeline_type", pipeline_type || "auto_label");
     formData.append("dpi", dpi || "300");
 
-    // ===== call FastAPI =====
-    const response = await axios.post(
-      "https://man-steel-api-1.onrender.com/upload",
-      formData,
-      {
-        headers: formData.getHeaders(),
-      }
-    );
+    const response = await axios.post(`${FASTAPI_BASE}/upload`, formData, {
+      headers: formData.getHeaders(),
+    });
 
-    // ===== send response back to frontend =====
     return res.status(200).json(response.data);
-
   } catch (error: any) {
     console.error("Upload error:", error?.response?.data || error.message);
-
     return res.status(500).json({
       message: "Upload failed",
       error: error?.response?.data || error.message,
@@ -51,61 +37,76 @@ export const uploadController = async (req: Request, res: Response) => {
   }
 };
 
-
+// ── SSE Stream ─────────────────────────────────────────────────────────────
 export const streamController = async (req: Request, res: Response) => {
-  console.log("stream route HIT")
+  console.log("stream route HIT");
   const { jobId } = req.params;
 
   try {
-    // ===== 1. Set SSE headers =====
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no"); // disable nginx buffering if behind proxy
     res.flushHeaders();
 
-    // ===== 2. Connect to FastAPI SSE =====
-    const response = await axios.get(
-      `https://man-steel-api-1.onrender.com/stream/${jobId}`,
-      {
-        responseType: "stream",
-      }
-    );
+    const response = await axios.get(`${FASTAPI_BASE}/stream/${jobId}`, {
+      responseType: "stream",
+    });
 
-    // ===== 3. Pipe stream chunks =====
     response.data.on("data", (chunk: Buffer) => {
-      const data = chunk.toString();
-
-      // Forward exactly as received
-      res.write(data);
+      res.write(chunk.toString());
     });
 
-    // ===== 4. End stream =====
-    response.data.on("end", () => {
-      res.end();
-    });
-
-    // ===== 5. Error handling =====
+    response.data.on("end", () => res.end());
     response.data.on("error", (err: any) => {
       console.error("Stream error:", err);
       res.end();
     });
 
-    // ===== 6. Handle client disconnect =====
     req.on("close", () => {
       response.data.destroy();
       res.end();
     });
-
   } catch (error: any) {
     console.error("Controller error:", error?.message);
+    res.write(`data: ${JSON.stringify({ type: "error", message: "Stream failed" })}\n\n`);
+    res.end();
+  }
+};
 
-    res.write(
-      `data: ${JSON.stringify({
-        type: "error",
-        message: "Stream failed",
-      })}\n\n`
+// ── Page Image Proxy ───────────────────────────────────────────────────────
+// Proxies GET /page-image/:jobId/:pageNum from FastAPI to the frontend.
+export const pageImageController = async (req: Request, res: Response) => {
+  const { jobId, pageNum } = req.params;
+  const dpi = req.query.dpi || "150";
+
+  try {
+    const response = await axios.get(
+      `${FASTAPI_BASE}/page-image/${jobId}/${pageNum}?dpi=${dpi}`,
+      { responseType: "stream" }
     );
 
-    res.end();
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "public, max-age=3600"); // cache the raster image
+    response.data.pipe(res);
+
+    response.data.on("error", (err: any) => {
+      console.error("Page image stream error:", err);
+      res.status(500).end();
+    });
+  } catch (error: any) {
+    console.error("Page image error:", error?.message);
+    res.status(500).json({ message: "Failed to fetch page image" });
+  }
+};
+
+// ── Feedback ───────────────────────────────────────────────────────────────
+export const feedbackController = async (req: Request, res: Response) => {
+  try {
+    const response = await axios.post(`${FASTAPI_BASE}/feedback`, req.body);
+    return res.status(200).json(response.data);
+  } catch (error: any) {
+    console.error("Feedback error:", error?.response?.data || error.message);
+    return res.status(500).json({ message: "Feedback failed" });
   }
 };
