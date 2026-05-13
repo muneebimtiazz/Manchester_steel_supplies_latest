@@ -46,7 +46,7 @@ export const streamController = async (req: Request, res: Response) => {
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
-    res.setHeader("X-Accel-Buffering", "no"); // disable nginx buffering if behind proxy
+    res.setHeader("X-Accel-Buffering", "no");
     res.flushHeaders();
 
     const response = await axios.get(`${FASTAPI_BASE}/stream/${jobId}`, {
@@ -75,7 +75,6 @@ export const streamController = async (req: Request, res: Response) => {
 };
 
 // ── Page Image Proxy ───────────────────────────────────────────────────────
-// Proxies GET /page-image/:jobId/:pageNum from FastAPI to the frontend.
 export const pageImageController = async (req: Request, res: Response) => {
   const { jobId, pageNum } = req.params;
   const dpi = req.query.dpi || "150";
@@ -87,7 +86,7 @@ export const pageImageController = async (req: Request, res: Response) => {
     );
 
     res.setHeader("Content-Type", "image/png");
-    res.setHeader("Cache-Control", "public, max-age=3600"); // cache the raster image
+    res.setHeader("Cache-Control", "public, max-age=3600");
     response.data.pipe(res);
 
     response.data.on("error", (err: any) => {
@@ -108,5 +107,34 @@ export const feedbackController = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("Feedback error:", error?.response?.data || error.message);
     return res.status(500).json({ message: "Feedback failed" });
+  }
+};
+
+// ── Download Labeled PDF ───────────────────────────────────────────────────
+export const downloadLabeledPdfController = async (req: Request, res: Response) => {
+  const { jobId } = req.params;
+
+  try {
+    const response = await axios.post(
+      `${FASTAPI_BASE}/download-labeled/${jobId}`,
+      req.body,               // { labels: [...] }
+      { responseType: "stream" }
+    );
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="labeled_drawing_${jobId.slice(0, 8)}.pdf"`
+    );
+
+    response.data.pipe(res);
+
+    response.data.on("error", (err: any) => {
+      console.error("PDF download stream error:", err);
+      res.status(500).end();
+    });
+  } catch (error: any) {
+    console.error("Download labeled PDF error:", error?.response?.data || error.message);
+    return res.status(500).json({ message: "PDF generation failed" });
   }
 };

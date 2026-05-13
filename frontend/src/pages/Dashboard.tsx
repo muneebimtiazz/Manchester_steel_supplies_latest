@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useCallback } from "react"
 import Navbar from "../components/Navbar"
 import PdfUploadTrigger from "../components/PdfUploadTrigger"
 import {
-  Plus, Minus, SlidersHorizontal, ArrowDownNarrowWide, Ellipsis,
+  Plus, Minus, SlidersHorizontal, ArrowDownNarrowWide, Ellipsis, X, Pencil,
 } from "lucide-react"
 
 import precisionManufacturing from "../assets/precision_manufacturing.png"
@@ -23,7 +23,14 @@ import play from "../assets/play_arrow.png"
 import upload from "../assets/Mask_group.png"
 import pdflogo from "../assets/Group_35.png"
 
-import { streamJob, getPageImageUrl, type LabelEvent, type UploadResult } from "../api/steel.api"
+import {
+  streamJob,
+  getPageImageUrl,
+  sendCorrection,
+  downloadLabeledPdf,
+  type LabelEvent,
+  type UploadResult,
+} from "../api/steel.api"
 
 // ── Types ──────────────────────────────────────────────────────────────────
 interface DetectedLabel extends LabelEvent {
@@ -37,6 +44,8 @@ interface BreakdownRow {
   tonnage: number;
   status: string;
   color: string;
+  /** Representative label event (used for feedback payload) */
+  sample: DetectedLabel;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -46,8 +55,113 @@ const DOT_COLORS: Record<string, string> = {
   green: "#22C55E",
 };
 
+// ── FeedbackModal ──────────────────────────────────────────────────────────
+interface FeedbackModalProps {
+  row: BreakdownRow;
+  onClose: () => void;
+  onSaved: (originalLabel: string, correctedLabel: string) => void;
+}
+
+function FeedbackModal({ row, onClose, onSaved }: FeedbackModalProps) {
+  const [corrected, setCorrected] = useState(row.label)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleSave = async () => {
+    const trimmed = corrected.trim()
+    if (!trimmed || trimmed === row.label) { onClose(); return }
+    setSaving(true)
+    setError(null)
+    try {
+      await sendCorrection({
+        original_label: row.label,
+        corrected_label: trimmed,
+        page: row.sample.page,
+        x: row.sample.x,
+        y: row.sample.y,
+      })
+      onSaved(row.label, trimmed)
+      onClose()
+    } catch (e: any) {
+      setError(e?.response?.data?.message || "Failed to save correction.")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6 space-y-4">
+
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <p className="font-semibold text-gray-800 text-base">Correct Label</p>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Original */}
+        <div className="space-y-1">
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Original (detected)</p>
+          <div
+            className="px-3 py-2 rounded-lg text-sm font-mono text-white"
+            style={{ background: DOT_COLORS[row.color] || "#438DE7" }}
+          >
+            {row.label}
+          </div>
+        </div>
+
+        {/* Correction input */}
+        <div className="space-y-1">
+          <p className="text-xs text-gray-500 font-medium uppercase tracking-wide">Corrected label</p>
+          <input
+            autoFocus
+            type="text"
+            value={corrected}
+            onChange={(e) => setCorrected(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") handleSave() }}
+            className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
+            placeholder="e.g. 254x146x31 UB"
+          />
+        </div>
+
+        {/* Meta */}
+        <div className="text-xs text-gray-400 flex gap-4">
+          <span>Qty: <b>{row.qty}</b></span>
+          <span>Length: <b>{row.length}</b></span>
+          <span>Weight: <b>{row.tonnage.toFixed(2)} kg</b></span>
+        </div>
+
+        {error && <p className="text-red-500 text-xs">{error}</p>}
+
+        {/* Actions */}
+        <div className="flex gap-2 justify-end pt-1">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-4 py-2 text-sm bg-[#438DE7] hover:bg-[#2784f7] disabled:opacity-50 text-white rounded-lg flex items-center gap-2"
+          >
+            {saving && (
+              <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            )}
+            Save Correction
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 const Dashboard = () => {
+  const IMAGE_DPI = 150
   const [zoom, setZoom] = useState(62)
 
   // Upload / job state
@@ -63,7 +177,14 @@ const Dashboard = () => {
   const [progress, setProgress] = useState(0)
   const [activity, setActivity] = useState<any[]>([])
 
-  // Refs
+  // Feedback modal
+  const [feedbackRow, setFeedbackRow] = useState<BreakdownRow | null>(null)
+
+  // PDF download state
+  const [downloading, setDownloading] = useState(false)
+
+  // true while fetchPageImage is in-flight (after upload, before blob arrives)
+  const [fetchingImage, setFetchingImage] = useState(false)
   const streamRef = useRef<EventSource | null>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
@@ -72,24 +193,50 @@ const Dashboard = () => {
   const incr = () => setZoom((a) => Math.min(a + 5, 200))
   const decr = () => setZoom((a) => Math.max(a - 5, 20))
 
+  // ── Fetch page image with retry (handles Render cold-start 502s) ───────────
+  const fetchPageImage = async (id: string, retries = 5, delayMs = 2000) => {
+    setFetchingImage(true)
+    const url = getPageImageUrl(id, 0, IMAGE_DPI)
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      try {
+        const res = await fetch(url)
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const blob = await res.blob()
+        const objectUrl = URL.createObjectURL(blob)
+        setPageImageUrl(objectUrl)
+        setFetchingImage(false)
+        return
+      } catch (err) {
+        console.warn(`Page image attempt ${attempt}/${retries} failed:`, err)
+        if (attempt < retries) {
+          await new Promise((r) => setTimeout(r, delayMs))
+        } else {
+          console.error("Could not load page image after all retries")
+          setFetchingImage(false)
+        }
+      }
+    }
+  }
+
   // ── After upload success ─────────────────────────────────────────────────
   const handleUploadSuccess = (id: string, meta: UploadResult) => {
-    // Reset everything for new job
     setJobId(id)
     setLabels([])
     setLiveTonnage(0)
     setProgress(0)
     setActivity([])
     setImageLoaded(false)
+    setPageImageUrl(null)
 
     const page0 = meta.pages[0]
     setPageMeta({ width: page0.width, height: page0.height })
 
-    // Trigger image load via proxy
-    setPageImageUrl(getPageImageUrl(id, 0, 150))
+    // Fetch with retry — the server is already warm from the upload request,
+    // but a brief pause ensures it finishes writing before we hit /page-image
+    fetchPageImage(id)
   }
 
-  // ── Draw dots on canvas whenever labels or image change ──────────────────
+  // ── Draw dots ────────────────────────────────────────────────────────────
   const drawDots = useCallback(() => {
     const canvas = canvasRef.current
     const img = imgRef.current
@@ -98,45 +245,63 @@ const Dashboard = () => {
     const ctx = canvas.getContext("2d")
     if (!ctx) return
 
-    // Sync canvas size to rendered image size
     const rect = img.getBoundingClientRect()
     canvas.width = rect.width
     canvas.height = rect.height
 
     ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-    const scaleX = canvas.width / pageMeta.width
-    const scaleY = canvas.height / pageMeta.height
+    // ── Rotation detection ──────────────────────────────────────────────────
+    // pageMeta comes from PyMuPDF page.rect (PDF coordinate space).
+    // The rasterised image may have been rendered rotated 90° relative to
+    // the PDF coordinate space (common when the page has a /Rotate entry).
+    // We detect this by comparing aspect ratios:
+    //   - PDF landscape (width > height) but image portrait (height > width) → rotated
+    //   - PDF portrait (height > width) but image landscape (width > height) → rotated
+    const pdfIsLandscape = pageMeta.width > pageMeta.height
+    const imgIsLandscape = rect.width > rect.height
+    const isRotated = pdfIsLandscape !== imgIsLandscape
+
+    // When rotated 90°, PDF (x, y) maps to image (y, pdfWidth - x) space.
+    // We compute effective scale against whichever dimension actually matches.
+    const effectivePdfW = isRotated ? pageMeta.height : pageMeta.width
+    const effectivePdfH = isRotated ? pageMeta.width  : pageMeta.height
+
+    const scaleX = canvas.width  / effectivePdfW
+    const scaleY = canvas.height / effectivePdfH
 
     labels.forEach((lbl) => {
-      const px = lbl.x * scaleX
-      const py = lbl.y * scaleY
+      // Map PDF point coords → canvas pixel coords, accounting for rotation
+      let px: number, py: number
+      if (isRotated) {
+        // 90° clockwise rotation: new_x = pdf_y, new_y = pdfWidth - pdf_x
+        px = lbl.y * scaleX
+        py = (pageMeta.width - lbl.x) * scaleY
+      } else {
+        px = lbl.x * scaleX
+        py = lbl.y * scaleY
+      }
+
       const color = DOT_COLORS[lbl.color] || "#438DE7"
 
-      // Outer glow
       ctx.beginPath()
       ctx.arc(px, py, 8, 0, Math.PI * 2)
       ctx.fillStyle = color + "33"
       ctx.fill()
 
-      // Dot
       ctx.beginPath()
       ctx.arc(px, py, 4, 0, Math.PI * 2)
       ctx.fillStyle = color
       ctx.fill()
 
-      // Tiny label
       ctx.font = "bold 9px monospace"
       ctx.fillStyle = "#1e293b"
       ctx.fillText(lbl.label, px + 7, py + 3)
     })
   }, [labels, pageMeta, imageLoaded])
 
-  useEffect(() => {
-    drawDots()
-  }, [drawDots])
+  useEffect(() => { drawDots() }, [drawDots])
 
-  // Redraw on window resize
   useEffect(() => {
     const onResize = () => drawDots()
     window.addEventListener("resize", onResize)
@@ -146,10 +311,7 @@ const Dashboard = () => {
   // ── Start AI Scan ────────────────────────────────────────────────────────
   const handleStartScan = () => {
     if (!jobId) return
-
-    if (streamRef.current) {
-      streamRef.current.close()
-    }
+    if (streamRef.current) streamRef.current.close()
 
     setLabels([])
     setLiveTonnage(0)
@@ -159,13 +321,9 @@ const Dashboard = () => {
 
     streamRef.current = streamJob(jobId, (data) => {
       if (data.type === "label") {
-        const lbl: DetectedLabel = {
-          ...data,
-          detectedAt: new Date().toLocaleTimeString(),
-        }
+        const lbl: DetectedLabel = { ...data, detectedAt: new Date().toLocaleTimeString() }
 
         setLabels((prev) => {
-          // Deduplicate by id
           if (prev.some((l) => l.id === lbl.id)) return prev
           return [lbl, ...prev]
         })
@@ -184,23 +342,37 @@ const Dashboard = () => {
         ])
       }
 
-      if (data.type === "progress") {
-        setProgress(data.percent || 0)
-      }
-
-      if (data.type === "complete" || data.type === "done") {
-        setScanning(false)
-        setProgress(100)
-      }
-
-      if (data.type === "error") {
-        setScanning(false)
-        console.error("Stream error:", data.message)
-      }
+      if (data.type === "progress") setProgress(data.percent || 0)
+      if (data.type === "complete" || data.type === "done") { setScanning(false); setProgress(100) }
+      if (data.type === "error") { setScanning(false); console.error("Stream error:", data.message) }
     })
   }
 
-  // ── Breakdown rows derived from labels ───────────────────────────────────
+  // ── Feedback: apply correction to local state ────────────────────────────
+  const handleFeedbackSaved = (originalLabel: string, correctedLabel: string) => {
+    setLabels((prev) =>
+      prev.map((l) =>
+        l.label === originalLabel
+          ? { ...l, label: correctedLabel, color: "green" as const }
+          : l
+      )
+    )
+  }
+
+  // ── Export Marked PDF ────────────────────────────────────────────────────
+  const handleDownloadPdf = async () => {
+    if (!jobId || labels.length === 0) return
+    setDownloading(true)
+    try {
+      await downloadLabeledPdf(jobId, labels)
+    } catch (e) {
+      console.error("PDF download failed:", e)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  // ── Breakdown rows ───────────────────────────────────────────────────────
   const breakdownRows: BreakdownRow[] = (() => {
     const map = new Map<string, BreakdownRow>()
     labels.forEach((l) => {
@@ -216,26 +388,39 @@ const Dashboard = () => {
           tonnage: l.weight_kg,
           status: l.needs_review ? "Review" : "OK",
           color: l.color,
+          sample: l,
         })
       }
     })
     return Array.from(map.values())
   })()
 
-  // ── Avg confidence ───────────────────────────────────────────────────────
   const avgConfidence = labels.length
     ? Math.round(labels.reduce((a, l) => a + l.confidence, 0) / labels.length * 100)
     : 0
 
-  // ── Cleanup on unmount ───────────────────────────────────────────────────
+  useEffect(() => { return () => { streamRef.current?.close() } }, [])
+
+  // Revoke blob URL when it changes to avoid memory leaks
   useEffect(() => {
-    return () => { streamRef.current?.close() }
-  }, [])
+    return () => {
+      if (pageImageUrl?.startsWith("blob:")) URL.revokeObjectURL(pageImageUrl)
+    }
+  }, [pageImageUrl])
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <>
       <Navbar />
+
+      {/* Feedback Modal */}
+      {feedbackRow && (
+        <FeedbackModal
+          row={feedbackRow}
+          onClose={() => setFeedbackRow(null)}
+          onSaved={handleFeedbackSaved}
+        />
+      )}
 
       <div className="bg-[#F4F4F5] sm:flex h-fit p-3 gap-3 px-4 sm:px-10 justify-center items-stretch overflow-hidden">
 
@@ -253,13 +438,18 @@ const Dashboard = () => {
               </div>
             </div>
 
-            {/* PDF VIEWER AREA */}
             <div
               ref={viewerRef}
-              className="flex-1 overflow-auto rounded-xl bg-gray-100 flex items-start justify-center relative"
+              className="flex-1 overflow-auto rounded-xl bg-gray-100 relative"
             >
-              {!pageImageUrl ? (
-                /* Upload trigger shown when no PDF yet */
+              {fetchingImage ? (
+                /* Loading skeleton — shown between upload success and image blob arriving */
+                <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-gray-100 rounded-xl">
+                  <div className="w-10 h-10 border-4 border-blue-300 border-t-blue-500 rounded-full animate-spin" />
+                  <p className="text-sm text-gray-500 font-medium">Loading drawing…</p>
+                  <p className="text-xs text-gray-400">Rasterising PDF page</p>
+                </div>
+              ) : !pageImageUrl ? (
                 <div className="w-full h-full">
                   <PdfUploadTrigger
                     uploadIcon={pdflogo}
@@ -268,28 +458,34 @@ const Dashboard = () => {
                   />
                 </div>
               ) : (
-                /* Once uploaded, show the rasterised PDF page */
+                /* Wrapper that scales from top-left; natural size = zoom 100% */
                 <div
-                  className="relative inline-block"
-                  style={{ transform: `scale(${zoom / 100})`, transformOrigin: "top left" }}
+                  className="relative inline-block origin-top-left"
+                  style={{
+                    transform: `scale(${zoom / 100})`,
+                    transformOrigin: "top left",
+                    // Keep the scrollable area aware of the scaled size
+                    // so scrollbars reflect the true content dimensions
+                    width: imgRef.current
+                      ? imgRef.current.naturalWidth * (zoom / 100)
+                      : "auto",
+                  }}
                 >
                   <img
                     ref={imgRef}
                     src={pageImageUrl}
                     alt="PDF page"
                     className="block"
-                    style={{ maxWidth: "100%", display: "block" }}
+                    // No maxWidth — render at natural pixel size so labels don't cluster.
+                    // At 150 DPI an A3 page is ~1748×1240px — crisp enough and fast.
+                    style={{ display: "block" }}
                     onLoad={() => setImageLoaded(true)}
                   />
-
-                  {/* Canvas overlaid exactly on top of the image */}
                   <canvas
                     ref={canvasRef}
                     className="absolute inset-0 pointer-events-none"
                     style={{ width: "100%", height: "100%" }}
                   />
-
-                  {/* Loading shimmer while image isn't ready */}
                   {!imageLoaded && (
                     <div className="absolute inset-0 bg-gray-200 animate-pulse rounded" />
                   )}
@@ -297,7 +493,6 @@ const Dashboard = () => {
               )}
             </div>
 
-            {/* Progress bar */}
             {scanning && (
               <div className="w-full bg-gray-200 rounded-full h-1.5">
                 <div
@@ -307,7 +502,6 @@ const Dashboard = () => {
               </div>
             )}
 
-            {/* Toolbar + Start button */}
             <div className="sm:flex sm:justify-between space-y-2 sm:space-y-0">
               <div className="sm:flex gap-3 space-y-2 sm:space-y-0">
                 <div className="bg-[#292929] flex gap-6 rounded-md px-5 py-3 text-white">
@@ -322,7 +516,6 @@ const Dashboard = () => {
               </div>
 
               <div className="flex gap-2">
-                {/* Replace PDF button (shown once a job exists) */}
                 {jobId && (
                   <label className="text-gray-600 flex justify-center items-center gap-1 px-4 py-3 border border-gray-300 bg-white hover:bg-gray-50 rounded-md cursor-pointer text-sm">
                     Replace PDF
@@ -465,12 +658,16 @@ const Dashboard = () => {
                     <th className="px-4 py-2 text-left font-medium">QTY</th>
                     <th className="px-4 py-2 text-left font-medium">Weight (kg)</th>
                     <th className="px-4 py-2 text-left font-medium">Status</th>
+                    {/* Edit column — only visible when there are labels */}
+                    {labels.length > 0 && (
+                      <th className="px-4 py-2 text-left font-medium">Fix</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody>
                   {breakdownRows.length === 0 ? (
                     <tr>
-                      <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
+                      <td colSpan={7} className="px-4 py-8 text-center text-gray-400">
                         {scanning ? "Detecting members…" : "No members detected yet."}
                       </td>
                     </tr>
@@ -490,6 +687,16 @@ const Dashboard = () => {
                             {row.status}
                           </span>
                         </td>
+                        {/* Fix / Feedback button */}
+                        <td className="px-4 py-2">
+                          <button
+                            onClick={() => setFeedbackRow(row)}
+                            title="Correct this label"
+                            className="p-1.5 rounded-md text-gray-400 hover:text-blue-500 hover:bg-blue-50 transition-colors"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -502,9 +709,24 @@ const Dashboard = () => {
                 <img src={excelLogo} className="w-4 h-4 mr-2" />
                 Export Excel File
               </button>
-              <button className="px-3 py-2 rounded-md border border-[#E5252A29] bg-[#E5252A29] text-sm inline-flex items-center">
-                <img src={pdfLogo} className="w-4 h-4 mr-2" />
-                Export Marked PDF
+
+              {/* Export Marked PDF */}
+              <button
+                onClick={handleDownloadPdf}
+                disabled={!jobId || labels.length === 0 || downloading}
+                className="px-3 py-2 rounded-md border border-[#E5252A29] bg-[#E5252A29] text-sm inline-flex items-center disabled:opacity-50 hover:bg-[#E5252A40] transition-colors"
+              >
+                {downloading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-red-400 border-t-transparent rounded-full animate-spin mr-2" />
+                    Generating…
+                  </>
+                ) : (
+                  <>
+                    <img src={pdfLogo} className="w-4 h-4 mr-2" />
+                    Export Marked PDF
+                  </>
+                )}
               </button>
             </div>
           </div>

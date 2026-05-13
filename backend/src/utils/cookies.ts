@@ -5,7 +5,7 @@ export const setAccessTokenCookie = (res: Response, token: string) => {
       httpOnly: true,
       secure: false,  //true 
       sameSite: "lax", //none
-      maxAge: 15 * 60 * 1000,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 };
 

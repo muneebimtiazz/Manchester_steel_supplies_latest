@@ -54,7 +54,6 @@ export const uploadDrawing = async (
 };
 
 // ── Page Image URL ─────────────────────────────────────────────────────────
-// Returns the URL to use in an <img> src or fetch — proxied via Express.
 export const getPageImageUrl = (jobId: string, pageNum = 0, dpi = 150): string => {
   return `/api/steel/page-image/${jobId}/${pageNum}?dpi=${dpi}`;
 };
@@ -64,7 +63,6 @@ export const streamJob = (
   jobId: string,
   onMessage: (data: any) => void
 ): EventSource => {
-  // Goes through Express proxy → FastAPI
   const eventSource = new EventSource(`/api/steel/stream/${jobId}`);
 
   eventSource.onmessage = (event) => {
@@ -103,4 +101,25 @@ export const sendExclusion = async (payload: {
 }) => {
   const res = await api.post("/steel/feedback", { type: "exclude", ...payload });
   return res.data;
+};
+
+// ── Download Labeled PDF ───────────────────────────────────────────────────
+export const downloadLabeledPdf = async (
+  jobId: string,
+  labels: LabelEvent[]
+): Promise<void> => {
+  const res = await api.post(
+    `/steel/download-labeled/${jobId}`,
+    { labels },
+    { responseType: "blob" }
+  );
+
+  const url = window.URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", `labeled_drawing_${jobId.slice(0, 8)}.pdf`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
 };
